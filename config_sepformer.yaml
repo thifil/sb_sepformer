@@ -1,0 +1,120 @@
+# Author: Valentin Frossard
+# Subject: Reimplementing Sepformer
+# Document Purpose:
+## yaml files are used by speechbrain applications to configure things
+# Structure:
+## Experiment settings
+## ...
+
+# Configuration
+## ... of Paths
+#seed: 345
+experiment_nr: 9
+load_from_checkpoint: False
+load_checkpoint_path: lightning_logs/version_0/checkpoints/epoch\=15-step\=222400.ckpt 
+
+
+homepath: . # /notebooks/attention_speech  #
+output_dir: !ref <homepath>/exp_<experiment_nr>/out
+checkpoint_dir: !ref <homepath>/exp_<experiment_nr>/checkpoints
+data_folder: !ref <homepath>/LibriMixData4/Libri2Mix
+train_data: !ref <data_folder>/wav8k/min/metadata/mixture_train-360_mix_clean.csv
+val_data: !ref <data_folder>/wav8k/min/metadata/mixture_dev_mix_clean.csv
+test_data: !ref <data_folder>/wav8k/min/metadata/mixture_test_mix_clean.csv
+
+## ... of model parameters
+encoder_kernel_size: 16
+encoder_out_channels: 256
+out_channels: 256
+kernel_stride: 8
+
+## ... experiment parameters
+N_epochs: 200
+batch_size: 1
+lr: 0.00015
+num_spks: 2
+
+## ... additional parameters
+### Loss used is the SCALE-INVARIANT SIGNAL-TO-NOISE RATIO
+loss: !name:speechbrain.nnet.losses.get_si_snr_with_pitwrapper
+
+# Constructing the model architecture:
+Encoder: !new:speechbrain.lobes.models.dual_path.Encoder
+    kernel_size: !ref <encoder_kernel_size>
+    out_channels: !ref <encoder_out_channels>
+
+Decoder: !new:speechbrain.lobes.models.dual_path.Decoder
+    kernel_size: !ref <encoder_kernel_size>
+    in_channels: !ref <encoder_out_channels>
+    out_channels: 1
+    stride: !ref <kernel_stride>
+    bias: False
+    
+intraAttention: #!new:speechbrain.lobes.models.dual_path.SBTransformerBlock
+    num_layers: 4
+    d_model: !ref <out_channels>
+    nhead: 8
+    d_ffn: 1024
+    dropout: 0
+    use_positional_encoding: True
+    norm_before: True
+
+interAttention: #!new:speechbrain.lobes.models.dual_path.SBTransformerBlock
+    num_layers: 4
+    d_model: !ref <out_channels>
+    nhead: 8
+    d_ffn: 1024
+    dropout: 0
+    use_positional_encoding: True
+    norm_before: True
+    
+MaskNet: !new:speechbrain.lobes.models.dual_path.Dual_Path_Model  ## ursprüngliche config
+    num_spks: !ref <num_spks>
+    in_channels: !ref <encoder_out_channels>
+    out_channels: !ref <out_channels>
+    num_layers: 1
+    K: 250
+    intra_model: !ref <intraAttention>
+    inter_model: !ref <interAttention>
+    norm: ln
+    linear_layer_after_inter_intra: False
+    skip_around_intra: True
+    
+    
+Mask: ## bei mir
+    num_spks: !ref <num_spks>
+    in_channels: !ref <encoder_out_channels>
+    out_channels: !ref <out_channels>
+    num_layers: 1
+    K: 250
+    intra_model: !ref <intraAttention>
+    inter_model: !ref <interAttention>
+    norm: ln
+    linear_layer_after_inter_intra: False
+    skip_around_intra: True
+    
+#modules:
+#    encoder: !ref <Encoder>
+#    decoder: !ref <Decoder>
+#    masknet: !ref <MaskNet>
+
+# Training utilities:
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+    limit: !ref <N_epochs>
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+    checkpoints_dir: !ref <output_dir>
+    recoverables: 
+        encoder: !ref <Encoder>
+        decoder: !ref <Decoder>
+        masknet: !ref <MaskNet>
+        counter: !ref <epoch_counter>
+        
+optimizer: !name:torch.optim.Adam
+    lr: !ref <lr>
+    weight_decay: 0
+    
+
+# Remarks to checkpointer:
+## recoverables: Are Objects to to recover. They need a (unique) name: this is used to connect the parameters in a checkpoint to the correct recoverable. The name is also used in the filename of the savefile for the objects parameters. These can also be added with add_recoverable or add_recoverables or just modifying checkpointer.recoverables directly.
+## For more details see: https://speechbrain.readthedocs.io/en/latest/API/speechbrain.utils.checkpoints.html
