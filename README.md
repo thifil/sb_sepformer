@@ -31,6 +31,3 @@ run a training by executing.
 ### Changing Hyperparamters
 To alter the training parameters open ```config_sepformer.yaml```.
 Here you can change the filepaths, the model parameters, experiment parameters loss function and optimizer.
-
-
-https://crowdtamers.com/build-test-a-million-%F0%9F%92%B2-arr-acquisition-funnel-in-9-weeks/
